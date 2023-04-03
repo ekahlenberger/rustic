@@ -1,11 +1,10 @@
-use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move};
+use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
 use crate::network::NeuralNetwork;
 use rand::{Rng};
 use rand::seq::SliceRandom;
 use rulinalg::utils;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
 
 
@@ -17,7 +16,6 @@ const BUFFER_CAPACITY: usize = 10000;
 const BATCH_SIZE: usize = 32;
 const LEARNING_RATE: f32 = 0.001;
 const EPISODES: usize = 50000;
-const SAVE_PATH: &str = "trained_model.json";
 
 #[derive(Clone)]
 struct Experience {
@@ -25,11 +23,6 @@ struct Experience {
     action: usize,
     reward: f32,
     next_state: Vec<f32>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Model {
-    pub neural_network: NeuralNetwork,
 }
 
 pub fn board_to_input(board: &Board, player: char) -> Vec<f32> {
@@ -60,16 +53,17 @@ fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32) -> us
     }
 }
 
-fn train() -> Result<(), Box<dyn std::error::Error>> {
+pub fn train(mut network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let mut buffer: Vec<Experience> = Vec::new();
     let mut epsilon = INITIAL_EPSILON;
-    let mut neural_network = NeuralNetwork::new(BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE);
     for _ in 0..EPISODES {
         let mut board = empty_board();
-        while check_winner(&board).is_none() {
+        while check_winner(&board).is_none() &&
+              !is_full(&board) 
+        {
             let state = board_to_input(&board, 'X');
-            let action = epsilon_greedy(&neural_network, &state, epsilon);
+            let action = epsilon_greedy(&network, &state, epsilon);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
             let res = make_move(&mut board, 'X', row, col);
@@ -105,16 +99,16 @@ fn train() -> Result<(), Box<dyn std::error::Error>> {
 
                 for &idx in indices.iter() {
                     let experience = &buffer[idx];
-                    let q_values = neural_network.forward(&experience.state);
+                    let q_values = network.forward(&experience.state);
                     let mut target_q_values = q_values.clone();
 
-                    let next_q_values = neural_network.forward(&experience.next_state);
+                    let next_q_values = network.forward(&experience.next_state);
                     let max_next_q_value = next_q_values.iter().fold(f32::NEG_INFINITY, |acc, x| acc.max(*x));
                     let target_q_value = experience.reward + DISCOUNT_FACTOR * max_next_q_value;
                     target_q_values[experience.action] = target_q_value;
 
                     // Update the neural network using gradient descent
-                    neural_network.update_weights_and_biases(&experience.state, &target_q_values, LEARNING_RATE);
+                    network.update_weights_and_biases(&experience.state, &target_q_values, LEARNING_RATE);
                 }
             }
 
@@ -128,23 +122,17 @@ fn train() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    // Save the trained model
-    let model = Model {
-        neural_network,
-    };
-    //save_model(&model, SAVE_PATH)?;
-
-    Ok(())
+    Ok(network)
 }
 
-pub fn save_model(model: &Model, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_network(model: &NeuralNetwork, path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
     serde_json::to_writer(writer, model)?;
     Ok(())
 }
 
-pub fn load_model(path: &str) -> Result<Model, Box<dyn std::error::Error>> {
+pub fn load_network(path: &str) -> Result<NeuralNetwork, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let model = serde_json::from_reader(reader)?;

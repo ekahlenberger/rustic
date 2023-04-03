@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+trained_network.json
+.vscode/settings.json
