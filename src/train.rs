@@ -3,19 +3,20 @@ use crate::network::NeuralNetwork;
 use rand::{Rng};
 use rand::seq::SliceRandom;
 use rulinalg::utils;
-use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use rayon::prelude::*;
+use std::sync::Mutex;
 
 
 const DISCOUNT_FACTOR: f32 = 0.9;
 const INITIAL_EPSILON: f32 = 1.0;
 const FINAL_EPSILON: f32 = 0.1;
 const EPSILON_DECAY: f32 = 0.999;
-const BUFFER_CAPACITY: usize = 10000;
-const BATCH_SIZE: usize = 32;
+const BUFFER_CAPACITY: usize = 50000;
+const BATCH_SIZE: usize = 64;
 const LEARNING_RATE: f32 = 0.001;
-const EPISODES: usize = 50000;
+const EPISODES: usize = 250000;
 
 #[derive(Clone)]
 struct Experience {
@@ -53,32 +54,45 @@ fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32) -> us
     }
 }
 
-pub fn train(mut network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error::Error>> {
+pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let mut buffer: Vec<Experience> = Vec::new();
     let mut epsilon = INITIAL_EPSILON;
+    let result_network = Mutex::new(network);
     for _ in 0..EPISODES {
         let mut board = empty_board();
         while check_winner(&board).is_none() &&
               !is_full(&board) 
         {
+            let nc = result_network.lock().unwrap().clone();
             let state = board_to_input(&board, 'X');
-            let action = epsilon_greedy(&network, &state, epsilon);
+            let action = epsilon_greedy(&nc, &state, epsilon);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
             let res = make_move(&mut board, 'X', row, col);
-            if res.is_err() {
-                continue;
-            }
 
             let reward;
-            if let Some(winner) = check_winner(&board) {
+            if res.is_err() {
+                reward = -2.0;
+                let next_state = state.clone();
+                buffer.push(Experience {
+                    state,
+                    action,
+                    reward,
+                    next_state,
+                });
+                break;
+            }
+            else if let Some(winner) = check_winner(&board) {
                 reward = if winner == 'X' { 1.0 } else { 0.0 };
             } else {
                 reward = 0.5;
             }
 
-            let next_state = board_to_input(&board, 'X');
+            let next_state = match res {
+                Ok(_) => board_to_input(&board, 'X'),
+                Err(_) => state.clone()
+            };
             buffer.push(Experience {
                 state,
                 action,
@@ -91,26 +105,26 @@ pub fn train(mut network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::e
                 buffer.remove(0);
             }
 
-            // Sample a mini-batch from the buffer and update the neural network
+            // Train the neural network
             if buffer.len() >= BATCH_SIZE {
-                let mut indices: Vec<usize> = (0..buffer.len()).collect();
-                indices.shuffle(&mut rng);
-                indices.truncate(BATCH_SIZE);
-
-                for &idx in indices.iter() {
-                    let experience = &buffer[idx];
-                    let q_values = network.forward(&experience.state);
+                buffer
+                .choose_multiple(&mut rng, BATCH_SIZE)
+                .collect::<Vec<_>>()
+                .into_par_iter()
+                .for_each(|experience| {
+                    let q_values = nc.forward(&experience.state);
                     let mut target_q_values = q_values.clone();
 
-                    let next_q_values = network.forward(&experience.next_state);
+                    let next_q_values = nc.forward(&experience.next_state);
                     let max_next_q_value = next_q_values.iter().fold(f32::NEG_INFINITY, |acc, x| acc.max(*x));
                     let target_q_value = experience.reward + DISCOUNT_FACTOR * max_next_q_value;
                     target_q_values[experience.action] = target_q_value;
 
                     // Update the neural network using gradient descent
-                    network.update_weights_and_biases(&experience.state, &target_q_values, LEARNING_RATE);
-                }
+                    result_network.lock().unwrap().update_weights_and_biases(&experience.state, &target_q_values, LEARNING_RATE);
+                });
             }
+
 
             // Decay epsilon
             epsilon = epsilon * EPSILON_DECAY;
@@ -122,7 +136,7 @@ pub fn train(mut network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::e
             }
         }
     }
-    Ok(network)
+    Ok(result_network.into_inner().unwrap())
 }
 
 pub fn save_network(model: &NeuralNetwork, path: &str) -> Result<(), Box<dyn std::error::Error>> {

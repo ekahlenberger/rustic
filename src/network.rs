@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct NeuralNetwork {
     pub weights: Vec<Vec<f32>>,
     pub biases: Vec<f32>,
@@ -24,7 +24,7 @@ impl NeuralNetwork {
             result[i] = weight_sum + bias;
         }
         result
-    }   
+    }
 
     pub fn update_weights_and_biases(&mut self, state: &[f32], target_q_values: &[f32], learning_rate: f32) {
         let forward_result = self.forward(state); // Call forward once and store the result
@@ -35,10 +35,17 @@ impl NeuralNetwork {
             .zip(forward_result.iter())
             .map(|(target, forward)| learning_rate * (target - forward))
             .collect();
+        
+        // Clip the deltas to avoid exploding gradients
+        let clip_threshold = 1.0;
+        let clipped_deltas: Vec<f32> = deltas
+            .iter()
+            .map(|delta| delta.min(clip_threshold).max(-clip_threshold))
+            .collect();
     
-        // Update weights and biases using the deltas
+        // Update weights and biases using the clipped deltas
         for (idx, (weight, bias)) in self.weights.iter_mut().zip(self.biases.iter_mut()).enumerate() {
-            let delta = deltas[idx]; // Use the delta from the temporary vector
+            let delta = clipped_deltas[idx]; // Use the clipped delta from the temporary vector
             for w in weight.iter_mut() {
                 *w += delta;
             }
