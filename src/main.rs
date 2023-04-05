@@ -16,12 +16,11 @@ fn main() {
         Err(_) => NeuralNetwork::new(BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE),
     };
 
-    let mut success = true;
-    let mut no_loss_streak = 0;
+    let mut no_loss_streak = -1;
     let no_loss_streak_limit = 100;
     while no_loss_streak < no_loss_streak_limit {
-        if !success {
-            println!("No win: training network...");
+        if no_loss_streak == 0 {
+            println!("Loss: training network...");
             
             network = match train::train(network) {
                 Ok(n) => {
@@ -38,9 +37,9 @@ fn main() {
                 println!("Error saving network: {:?}", e);
             }
         }
+        if no_loss_streak == -1 {no_loss_streak = 0;}
         
         // Simulate a game using the current network
-    
         let mut board = empty_board();
         let mut player = 'X';
 
@@ -74,7 +73,7 @@ fn main() {
         }
 
         print_board(&board);
-        success = match check_winner(&board) {
+        match check_winner(&board) {
             Some(winner) => {
                 print!("Winner: {}", winner);
                 if winner == 'O' {
@@ -82,8 +81,9 @@ fn main() {
                     no_loss_streak = 0;
                 }
                 else {
-                    println!(" {}/{}", no_loss_streak, no_loss_streak_limit);
                     no_loss_streak += 1;
+                    println!(" {}/{}", no_loss_streak, no_loss_streak_limit);
+                    
                 }
                 winner == 'X'
             }

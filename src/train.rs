@@ -1,6 +1,6 @@
 use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
 use crate::network::NeuralNetwork;
-use rand::{Rng};
+use rand::{Rng, thread_rng};
 use rand::seq::SliceRandom;
 use rulinalg::utils;
 use std::fs::File;
@@ -74,6 +74,9 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
     let result_network = Mutex::new(network);
     for _ in 0..EPISODES {
         let mut board = empty_board();
+        if thread_rng().gen::<f32>() < 0.5 {
+            let _ = play_random_move(&mut board, 'O');
+        }
         while check_winner(&board).is_none() &&
               !is_full(&board) 
         {
