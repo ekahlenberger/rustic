@@ -41,16 +41,29 @@ pub fn board_to_input(board: &Board, player: char) -> Vec<f32> {
     input
 }
 
-fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32) -> usize {
+pub fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32, board: &Board) -> usize {
     let mut rng = rand::thread_rng();
     if rng.gen::<f32>() < epsilon {
-        // Choose a random move
-        rng.gen_range(0..BOARD_SIZE * BOARD_SIZE)
+        // Choose a random legal move
+        let mut legal_moves: Vec<usize> = vec![];
+        for i in 0..(BOARD_SIZE * BOARD_SIZE) {
+            let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
+            if board[row][col] == '-' {
+                legal_moves.push(i);
+            }
+        }
+        legal_moves.choose(&mut rng).cloned().unwrap()
     } else {
-        // Choose the move with the highest Q-value
+        // Choose the move with the highest Q-value among legal moves
         let q_values = network.forward(state);
-        //q_values.argminmax().1
-        utils::argmax(&(q_values.into_iter().map(|f| f).collect::<Vec<f32>>())).0
+        let mut legal_q_values: Vec<(usize, f32)> = vec![];
+        for i in 0..(BOARD_SIZE * BOARD_SIZE) {
+            let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
+            if board[row][col] == '-' {
+                legal_q_values.push((i, q_values[i]));
+            }
+        }
+        legal_q_values.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|&(idx, _)| idx).unwrap()
     }
 }
 
@@ -66,14 +79,14 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
         {
             let nc = result_network.lock().unwrap().clone();
             let state = board_to_input(&board, 'X');
-            let action = epsilon_greedy(&nc, &state, epsilon);
+            let action = epsilon_greedy(&nc, &state, epsilon, &board);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
             let res = make_move(&mut board, 'X', row, col);
 
             let reward;
             if res.is_err() {
-                reward = -2.0;
+                reward = -20f32;
                 let next_state = state.clone();
                 buffer.push(Experience {
                     state,
@@ -84,7 +97,9 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
                 break;
             }
             else if let Some(winner) = check_winner(&board) {
-                reward = if winner == 'X' { 1.0 } else { 0.0 };
+                reward = if winner == 'X' { 10f32 } else { -10f32 };
+            } else if is_full(&board) {
+                reward = 0.0;
             } else {
                 reward = 0.5;
             }

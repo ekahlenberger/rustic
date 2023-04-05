@@ -1,7 +1,7 @@
 use rulinalg::utils;
 
 use game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
-use train::{board_to_input, save_network, load_network};
+use train::{board_to_input, save_network, load_network, epsilon_greedy};
 use network::NeuralNetwork;
 
 mod game;
@@ -16,38 +16,44 @@ fn main() {
         Err(_) => NeuralNetwork::new(BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE),
     };
 
-    let mut success = false;
-    while !success {
-        network = match train::train(network) {
-            Ok(n) => {
-                println!("Training complete.");
-                n
+    let mut success = true;
+    let mut no_loss_streak = 0;
+    let no_loss_streak_limit = 100;
+    while no_loss_streak < no_loss_streak_limit {
+        if !success {
+            println!("No win: training network...");
+            
+            network = match train::train(network) {
+                Ok(n) => {
+                    println!("Training complete.");
+                    n
+                }
+                Err(e) => {
+                    println!("Error during training: {:?}", e);
+                    return
+                }
+            };
+            // Save the trained model
+            if let Err(e) = save_network(&network, trained_network_path) {
+                println!("Error saving network: {:?}", e);
             }
-            Err(e) => {
-                println!("Error during training: {:?}", e);
-                return
-            }
-        };
-
-        // Save the trained model
-        
-        if let Err(e) = save_network(&network, trained_network_path) {
-            println!("Error saving network: {:?}", e);
         }
-
-        // Simulate a game using the trained model
+        
+        // Simulate a game using the current network
     
         let mut board = empty_board();
         let mut player = 'X';
 
         while check_winner(&board).is_none() && !is_full(&board) {
-            print_board(&board);
-            println!("Player: {}", player);
+            //print_board(&board);
+            //println!("Player: {}", player);
 
             if player == 'X' {
                 let state = board_to_input(&board, 'X');
-                let q_values = network.forward(&state);
-                let action = utils::argmax(&(q_values.into_iter().map(|f| f).collect::<Vec<f32>>())).0;
+                //let q_values = network.forward(&state);
+                //let action = utils::argmax(&(q_values.into_iter().map(|f| f).collect::<Vec<f32>>())).0;
+                let action = train::epsilon_greedy(&network, &state, 0.0, &board); // Use epsilon_greedy with epsilon set to 0.0
+
 
                 let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
                 match make_move(&mut board, player, row, col) {
@@ -66,25 +72,29 @@ fn main() {
 
             player = if player == 'X' { 'O' } else { 'X' };
         }
+
+        print_board(&board);
         success = match check_winner(&board) {
             Some(winner) => {
-                println!("Winner: {}", winner);
+                print!("Winner: {}", winner);
+                if winner == 'O' {
+                    println!(" Loss streak broken at: {}/{}", no_loss_streak, no_loss_streak_limit);
+                    no_loss_streak = 0;
+                }
+                else {
+                    println!(" {}/{}", no_loss_streak, no_loss_streak_limit);
+                    no_loss_streak += 1;
+                }
                 winner == 'X'
             }
             None => {
                 println!("Draw");
+                no_loss_streak += 1;
                 false
             }
         };
-        if success
-        {
-            println!("Final board state:");
-            print_board(&board);
-            match check_winner(&board) {
-                Some(winner) => println!("Winner: {}", winner),
-                None => println!("Draw"),
-            }
-        }
+        
+        
     }
 }
 
