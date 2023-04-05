@@ -1,13 +1,12 @@
-use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
+use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, is_full};
 use crate::network::NeuralNetwork;
-use rand::{Rng, thread_rng};
+use rand::{Rng};
 use rand::seq::SliceRandom;
-use rulinalg::utils;
+//use rulinalg::utils;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use rayon::prelude::*;
 use std::sync::Mutex;
-
 
 const DISCOUNT_FACTOR: f32 = 0.9;
 const INITIAL_EPSILON: f32 = 1.0;
@@ -69,29 +68,32 @@ pub fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32, b
 
 pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
-    let mut buffer: Vec<Experience> = Vec::new();
+    
+    let mut experiences: Vec<Experience> = Vec::new();
     let mut epsilon = INITIAL_EPSILON;
     let result_network = Mutex::new(network);
+    let mut player = 'X';
+    let mut oponent = 'O';
     for _ in 0..EPISODES {
         let mut board = empty_board();
-        if thread_rng().gen::<f32>() < 0.5 {
-            let _ = play_random_move(&mut board, 'O');
-        }
+        // if thread_rng().gen::<f32>() < 0.5 {
+        //     let _ = play_random_move(&mut board, 'O');
+        // }
         while check_winner(&board).is_none() &&
               !is_full(&board) 
         {
             let nc = result_network.lock().unwrap().clone();
-            let state = board_to_input(&board, 'X');
+            let state = board_to_input(&board, player);
             let action = epsilon_greedy(&nc, &state, epsilon, &board);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
-            let res = make_move(&mut board, 'X', row, col);
+            let res = make_move(&mut board, player, row, col);
 
             let reward;
             if res.is_err() {
                 reward = -20f32;
                 let next_state = state.clone();
-                buffer.push(Experience {
+                experiences.push(Experience {
                     state,
                     action,
                     reward,
@@ -100,7 +102,7 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
                 break;
             }
             else if let Some(winner) = check_winner(&board) {
-                reward = if winner == 'X' { 10f32 } else { -10f32 };
+                reward = if winner == player { 10f32 } else { -10f32 };
             } else if is_full(&board) {
                 reward = 0.0;
             } else {
@@ -108,10 +110,10 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
             }
 
             let next_state = match res {
-                Ok(_) => board_to_input(&board, 'X'),
+                Ok(_) => board_to_input(&board, player),
                 Err(_) => state.clone()
             };
-            buffer.push(Experience {
+            experiences.push(Experience {
                 state,
                 action,
                 reward,
@@ -119,13 +121,13 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
             });
 
             // Ensure the buffer does not exceed its capacity
-            if buffer.len() > BUFFER_CAPACITY {
-                buffer.remove(0);
+            if experiences.len() > BUFFER_CAPACITY {
+                experiences.remove(0);
             }
 
             // Train the neural network
-            if buffer.len() >= BATCH_SIZE {
-                buffer
+            if experiences.len() >= BATCH_SIZE {
+                experiences
                 .choose_multiple(&mut rng, BATCH_SIZE)
                 .collect::<Vec<_>>()
                 .into_par_iter()
@@ -149,9 +151,12 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
             epsilon = epsilon.max(FINAL_EPSILON);
 
             // Agent plays a random move as 'O'
-            if check_winner(&board).is_none() {
-                let _ = play_random_move(&mut board, 'O');
-            }
+            // if check_winner(&board).is_none() {
+            //     let _ = play_random_move(&mut board, 'O');
+            // }
+            
+            // Swap players
+            std::mem::swap(&mut player, &mut oponent);
         }
     }
     Ok(result_network.into_inner().unwrap())

@@ -1,7 +1,7 @@
-use rulinalg::utils;
+//use rulinalg::utils;
 
 use game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
-use train::{board_to_input, save_network, load_network, epsilon_greedy};
+use train::{board_to_input, save_network, load_network};
 use network::NeuralNetwork;
 
 mod game;
@@ -77,7 +77,7 @@ fn main() {
             Some(winner) => {
                 print!("Winner: {}", winner);
                 if winner == 'O' {
-                    println!(" Loss streak broken at: {}/{}", no_loss_streak, no_loss_streak_limit);
+                    println!(" No Loss streak broken at: {}/{}", no_loss_streak, no_loss_streak_limit);
                     no_loss_streak = 0;
                 }
                 else {
