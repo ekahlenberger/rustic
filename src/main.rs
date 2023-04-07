@@ -40,7 +40,7 @@ fn main() {
         // Simulate a game using the current network
         let mut board = empty_board();
         let mut player = 'X';
-        let mut boards = vec![board.clone()];
+        let mut boards = vec![];
 
         while check_winner(&board).is_none() && !is_full(&board) {
             if player == 'X' {

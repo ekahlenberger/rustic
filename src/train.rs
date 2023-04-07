@@ -12,7 +12,7 @@ use itertools::{Itertools, Either};
 const DISCOUNT_FACTOR: f32 = 0.9;
 const INITIAL_EPSILON: f32 = 1.0;
 const FINAL_EPSILON: f32 = 0.1;
-const EPSILON_DECAY: f32 = 0.999;
+const EPSILON_DECAY: f32 = 0.9999;
 const BUFFER_CAPACITY: usize = 5000;
 const BATCH_SIZE: usize = 300;
 const LEARNING_RATE: f32 = 0.001;
@@ -139,14 +139,16 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
                     });
                 // Apply rewards to the player's experiences
                 let player_reward = if check_winner(&board) == Some(player) { 10f32 } else { -10f32 };
+                let too_many_player_moves = (player_experiences.len() - 3) as f32;
                 for experience in player_experiences.iter_mut() {
-                    experience.reward = player_reward;
+                    experience.reward = player_reward - too_many_player_moves;
                 }
 
                 // Apply rewards to the opponent's experiences
                 let opponent_reward = if check_winner(&board) == Some(oponent) { 10f32 } else { -10f32 };
+                let too_many_opponent_moves = (opponent_experiences.len() - 3) as f32;
                 for experience in opponent_experiences.iter_mut() {
-                    experience.reward = opponent_reward;
+                    experience.reward = opponent_reward - too_many_opponent_moves;
                 }
 
                 // fill experiences with episodes_experiences
