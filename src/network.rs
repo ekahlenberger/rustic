@@ -17,15 +17,16 @@ impl NeuralNetwork {
 
     pub fn forward(&self, input: &[f32]) -> Vec<f32> {
         let mut result = vec![0.0; self.biases.len()];
-        for (i, bias) in self.biases.iter().enumerate() {
+        for (output_neuron_index, bias) in self.biases.iter().enumerate() {
             let weight_sum = self.weights.iter()
-                .map(|w| w[i] * input[i])
+                .map(|w| w[output_neuron_index] * input[output_neuron_index])
                 .sum::<f32>();
-            result[i] = weight_sum + bias;
+            result[output_neuron_index] = (weight_sum + bias).tanh();
         }
         result
     }
-
+    const L1_REGULARIZATION: f32 = 0.001;
+    const L2_REGULARIZATION: f32 = 0.001;
     pub fn update_weights_and_biases(&mut self, state: &[f32], target_q_values: &[f32], learning_rate: f32) {
         let forward_result = self.forward(state); // Call forward once and store the result
         
@@ -47,9 +48,13 @@ impl NeuralNetwork {
         for (idx, (weight, bias)) in self.weights.iter_mut().zip(self.biases.iter_mut()).enumerate() {
             let delta = clipped_deltas[idx]; // Use the clipped delta from the temporary vector
             for w in weight.iter_mut() {
-                *w += delta;
+                let l1_regularization = Self::L1_REGULARIZATION * w.signum();
+                let l2_regularization = Self::L2_REGULARIZATION * *w;
+                *w += delta - learning_rate * (l1_regularization + l2_regularization);
             }
-            *bias = *bias + delta;
+            let l1_regularization = Self::L1_REGULARIZATION * bias.signum();
+            let l2_regularization = Self::L2_REGULARIZATION * *bias;
+            *bias = *bias + delta - learning_rate * (l1_regularization + l2_regularization);
         }
     }
 }

@@ -1,5 +1,3 @@
-//use rulinalg::utils;
-
 use game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
 use train::{board_to_input, save_network, load_network};
 use network::NeuralNetwork;
@@ -42,16 +40,13 @@ fn main() {
         // Simulate a game using the current network
         let mut board = empty_board();
         let mut player = 'X';
+        let mut boards = vec![board.clone()];
 
         while check_winner(&board).is_none() && !is_full(&board) {
-            //print_board(&board);
-            //println!("Player: {}", player);
-
             if player == 'X' {
                 let state = board_to_input(&board, 'X');
-                //let q_values = network.forward(&state);
-                //let action = utils::argmax(&(q_values.into_iter().map(|f| f).collect::<Vec<f32>>())).0;
-                let action = train::epsilon_greedy(&network, &state, 0.0, &board); // Use epsilon_greedy with epsilon set to 0.0
+                
+                let action = train::epsilon_greedy(&network, &state, 0.0, &board); // Use epsilon_greedy with epsilon set to 0.0 (exploit)
 
 
                 let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
@@ -70,9 +65,10 @@ fn main() {
             }
 
             player = if player == 'X' { 'O' } else { 'X' };
+            boards.push(board.clone());
         }
 
-        print_board(&board);
+        print_boards_horizontally(&boards);
         match check_winner(&board) {
             Some(winner) => {
                 print!("Winner: {}", winner);
@@ -98,11 +94,13 @@ fn main() {
     }
 }
 
-
-fn print_board(board: &Board) {
-    for row in board {
-        for cell in row {
-            print!("{} ", cell);
+fn print_boards_horizontally(boards: &[Board]) {
+    for row in 0..BOARD_SIZE {
+        for board in boards {
+            for col in 0..BOARD_SIZE {
+                print!("{} ", board[row][col]);
+            }
+            print!(" | ");
         }
         println!();
     }
