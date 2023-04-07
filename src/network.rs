@@ -1,4 +1,6 @@
 use serde::{Serialize, Deserialize};
+use rand::Rng;
+use rand::thread_rng;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct NeuralNetwork {
@@ -8,10 +10,11 @@ pub struct NeuralNetwork {
 
 impl NeuralNetwork {
     pub fn new(input_size: usize, output_size: usize) -> Self {
+        let mut rng = thread_rng();
         let weights = (0..input_size)
-            .map(|_| vec![rand::random::<f32>(); output_size])
+            .map(|_| (0..output_size).map(|_| rng.gen_range(-1f32 .. 1f32)).collect())
             .collect();
-        let biases = vec![rand::random::<f32>(); output_size];
+        let biases = (0..output_size).map(|_| rng.gen_range(-1f32 .. 1f32)).collect();
         Self { weights, biases }
     }
 
@@ -43,18 +46,25 @@ impl NeuralNetwork {
             .iter()
             .map(|delta| delta.min(clip_threshold).max(-clip_threshold))
             .collect();
-    
-        // Update weights and biases using the clipped deltas
-        for (idx, (weight, bias)) in self.weights.iter_mut().zip(self.biases.iter_mut()).enumerate() {
-            let delta = clipped_deltas[idx]; // Use the clipped delta from the temporary vector
-            for w in weight.iter_mut() {
-                let l1_regularization = Self::L1_REGULARIZATION * w.signum();
-                let l2_regularization = Self::L2_REGULARIZATION * *w;
-                *w += delta - learning_rate * (l1_regularization + l2_regularization);
+
+        for output_node_index in 0..clipped_deltas.len(){
+            let clipped_delta = clipped_deltas[output_node_index];
+            if clipped_delta.abs() < 1e-6 {
+                continue;
             }
+            let learn_delta = clipped_delta * learning_rate;
+            for weights in self.weights.iter_mut(){
+                let w = weights[output_node_index];
+                let l1_regularization = Self::L1_REGULARIZATION * w.signum();
+                let l2_regularization = Self::L2_REGULARIZATION * w;
+                
+                weights[output_node_index] = w + (learn_delta - learning_rate * (l1_regularization + l2_regularization));
+            }
+            let bias = self.biases[output_node_index];
             let l1_regularization = Self::L1_REGULARIZATION * bias.signum();
-            let l2_regularization = Self::L2_REGULARIZATION * *bias;
-            *bias = *bias + delta - learning_rate * (l1_regularization + l2_regularization);
+            let l2_regularization = Self::L2_REGULARIZATION * bias;
+            self.biases[output_node_index] += learn_delta - learning_rate * (l1_regularization + l2_regularization);
+
         }
     }
 }
