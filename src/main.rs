@@ -1,3 +1,4 @@
+use activation::Activation;
 use game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, play_random_move, is_full};
 use train::{board_to_input, save_network, load_network};
 use network::NeuralNetwork;
@@ -5,13 +6,14 @@ use network::NeuralNetwork;
 mod game;
 mod network;
 mod train;
-
+mod layer;
+mod activation;
 
 fn main() {
     let trained_network_path = "trained_network.json";
     let mut network = match load_network(trained_network_path) {
         Ok(model) => model,
-        Err(_) => NeuralNetwork::new(BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE),
+        Err(_) => NeuralNetwork::new(&[BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE * 2,BOARD_SIZE * BOARD_SIZE], &[Activation::Tanh, Activation::Tanh]),
     };
 
     let mut no_loss_streak = -1;

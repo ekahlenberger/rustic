@@ -2,7 +2,6 @@ use crate::game::{Board, BOARD_SIZE, empty_board, check_winner, make_move, is_fu
 use crate::network::NeuralNetwork;
 use rand::{Rng};
 use rand::seq::SliceRandom;
-//use rulinalg::utils;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use rayon::prelude::*;
@@ -139,14 +138,14 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
                     });
                 // Apply rewards to the player's experiences
                 let player_reward = if check_winner(&board) == Some(player) { 10f32 } else { -10f32 };
-                let too_many_player_moves = (player_experiences.len() - 3) as f32;
+                let too_many_player_moves = (player_experiences.len().checked_sub(3).unwrap_or(0)) as f32;
                 for experience in player_experiences.iter_mut() {
                     experience.reward = player_reward - too_many_player_moves;
                 }
 
                 // Apply rewards to the opponent's experiences
                 let opponent_reward = if check_winner(&board) == Some(oponent) { 10f32 } else { -10f32 };
-                let too_many_opponent_moves = (opponent_experiences.len() - 3) as f32;
+                let too_many_opponent_moves = (opponent_experiences.len().checked_sub(3).unwrap_or(0)) as f32;
                 for experience in opponent_experiences.iter_mut() {
                     experience.reward = opponent_reward - too_many_opponent_moves;
                 }
@@ -176,7 +175,7 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
                         target_q_values[experience.action] = target_q_value;
 
                         // Update the neural network using gradient descent
-                        result_network.lock().unwrap().update_weights_and_biases(&experience.state, &target_q_values, LEARNING_RATE);
+                        result_network.lock().unwrap().backpropagate(&experience.state, &target_q_values, LEARNING_RATE);
                     });
                 }
                 // Decay epsilon
