@@ -12,7 +12,7 @@ const DISCOUNT_FACTOR: f32 = 0.9;
 const INITIAL_EPSILON: f32 = 1.0;
 const FINAL_EPSILON: f32 = 0.1;
 const EPSILON_DECAY: f32 = 0.9999;
-const BUFFER_CAPACITY: usize = 5000;
+const BUFFER_CAPACITY: usize = 10000;
 const BATCH_SIZE: usize = 300;
 const LEARNING_RATE: f32 = 0.001;
 const EPISODES: usize = 50000;
@@ -40,29 +40,38 @@ pub fn board_to_input(board: &Board, player: char) -> Vec<f32> {
     input
 }
 
-pub fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32, board: &Board) -> usize {
+pub fn epsilon_greedy(network: &NeuralNetwork, state: &Vec<f32>, epsilon: f32, board: &Board, legal_only: bool) -> usize {
     let mut rng = rand::thread_rng();
     if rng.gen::<f32>() < epsilon {
-        // Choose a random legal move
-        let mut legal_moves: Vec<usize> = vec![];
-        for i in 0..(BOARD_SIZE * BOARD_SIZE) {
-            let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
-            if board[row][col] == '-' {
-                legal_moves.push(i);
+        if legal_only {
+            // Choose a random legal move
+            let mut legal_moves: Vec<usize> = vec![];
+            for i in 0..(BOARD_SIZE * BOARD_SIZE) {
+                let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
+                if board[row][col] == '-' {
+                    legal_moves.push(i);
+                }
             }
+            legal_moves.choose(&mut rng).cloned().unwrap()
+        } else {
+            rng.gen_range(0 .. BOARD_SIZE * BOARD_SIZE)
         }
-        legal_moves.choose(&mut rng).cloned().unwrap()
     } else {
         // Choose the move with the highest Q-value among legal moves
         let q_values = network.forward(state);
-        let mut legal_q_values: Vec<(usize, f32)> = vec![];
-        for i in 0..(BOARD_SIZE * BOARD_SIZE) {
-            let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
-            if board[row][col] == '-' {
-                legal_q_values.push((i, q_values[i]));
+        if legal_only{
+            let mut legal_q_values: Vec<(usize, f32)> = vec![];
+            for i in 0..(BOARD_SIZE * BOARD_SIZE) {
+                let (row, col) = (i / BOARD_SIZE, i % BOARD_SIZE);
+                if board[row][col] == '-' {
+                    legal_q_values.push((i, q_values[i]));
+                }
             }
+            legal_q_values.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|&(idx, _)| idx).unwrap()
         }
-        legal_q_values.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|&(idx, _)| idx).unwrap()
+        else {
+            q_values.iter().enumerate().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(idx, _)| idx).unwrap()
+        }
     }
 }
 
@@ -84,45 +93,36 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
         loop {
             let nc = result_network.lock().unwrap().clone();
             let state = board_to_input(&board, player);
-            let action = epsilon_greedy(&nc, &state, epsilon, &board);
+            let action = epsilon_greedy(&nc, &state, epsilon, &board, false);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
             let res = make_move(&mut board, player, row, col);
 
-            let reward;
             if res.is_err() {
-                reward = -20f32;
+                episode_finished = true;
                 let next_state = state.clone();
-                experiences.push(Experience {
+                episodes_experiences.clear();
+                episodes_experiences.push(Experience {
                     state,
                     action,
-                    reward,
+                    reward: -20f32,
                     next_state,
                 });
-                break;
+                
             }
-            else if let Some(_) = check_winner(&board) {
-                //reward = if winner == player { 10f32 } else { -10f32 };
+            else if check_winner(&board).is_some() || is_full(&board) {
                 episode_finished = true;
-            } else if is_full(&board) {
-                //reward = 0.0;
-                episode_finished = true;
-            } else {
-                //reward = 0.5;
+                let next_state = match res {
+                    Ok(_) => board_to_input(&board, player),
+                    Err(_) => state.clone()
+                };
+                episodes_experiences.push(Experience {
+                    state,
+                    action,
+                    reward: 0f32,
+                    next_state: next_state.clone(),
+                });
             }
-
-            let next_state = match res {
-                Ok(_) => board_to_input(&board, player),
-                Err(_) => state.clone()
-            };
-            episodes_experiences.push(Experience {
-                state,
-                action,
-                reward: 0f32,
-                next_state: next_state.clone(),
-            });
-
-            
 
             if episode_finished {
                 // split the experiences into player's and opponent's

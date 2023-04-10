@@ -14,9 +14,9 @@ impl Layer
     pub fn new(input_size: usize, output_size: usize, activation: Activation) -> Self {
         let mut rng = thread_rng();
         let weights = (0..input_size)
-            .map(|_| (0..output_size).map(|_| rng.gen_range(-1f32 .. 1f32)).collect())
+            .map(|_| (0..output_size).map(|_| rng.gen_range(-((6.0 / (input_size + output_size) as f32).sqrt()) .. (6.0 / (input_size + output_size) as f32).sqrt())).collect())
             .collect();
-        let biases = (0..output_size).map(|_| rng.gen_range(-1f32 .. 1f32)).collect();
+        let biases = (0..output_size).map(|_| rng.gen_range(-((6.0 / (input_size + output_size) as f32).sqrt()) .. (6.0 / (input_size + output_size) as f32).sqrt())).collect();
         Self { weights, biases, activation }
     }
 
@@ -54,7 +54,7 @@ impl Layer
             .collect();
         
         // Clip the deltas to avoid exploding gradients
-        let clip_threshold = 1.0;
+        let clip_threshold = 10.0;
         let clipped_deltas: Vec<f32> = deltas
             .iter()
             .map(|delta| delta.min(clip_threshold).max(-clip_threshold))
@@ -71,13 +71,12 @@ impl Layer
                 let l1_regularization = Self::L1_REGULARIZATION * w.signum();
                 let l2_regularization = Self::L2_REGULARIZATION * w;
                 
-                weights[output_node_index] = w + (learn_delta - learning_rate * (l1_regularization + l2_regularization));
+                weights[output_node_index] += learn_delta - learning_rate * (l1_regularization + l2_regularization);
             }
             let bias = self.biases[output_node_index];
             let l1_regularization = Self::L1_REGULARIZATION * bias.signum();
             let l2_regularization = Self::L2_REGULARIZATION * bias;
             self.biases[output_node_index] += learn_delta - learning_rate * (l1_regularization + l2_regularization);
-
         }
     }
 }

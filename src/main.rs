@@ -13,7 +13,7 @@ fn main() {
     let trained_network_path = "trained_network.json";
     let mut network = match load_network(trained_network_path) {
         Ok(model) => model,
-        Err(_) => NeuralNetwork::new(&[BOARD_SIZE * BOARD_SIZE, BOARD_SIZE * BOARD_SIZE * 2,BOARD_SIZE * BOARD_SIZE], &[Activation::Tanh, Activation::Tanh]),
+        Err(_) => NeuralNetwork::new(&[BOARD_SIZE * BOARD_SIZE, 18,BOARD_SIZE * BOARD_SIZE], &[Activation::Tanh, Activation::Tanh]),
     };
 
     let mut no_loss_streak = -1;
@@ -43,12 +43,12 @@ fn main() {
         let mut board = empty_board();
         let mut player = 'X';
         let mut boards = vec![];
-
+        let mut illegal_move = false;
         while check_winner(&board).is_none() && !is_full(&board) {
             if player == 'X' {
                 let state = board_to_input(&board, 'X');
                 
-                let action = train::epsilon_greedy(&network, &state, 0.0, &board); // Use epsilon_greedy with epsilon set to 0.0 (exploit)
+                let action = train::epsilon_greedy(&network, &state, 0.0, &board, false); // Use epsilon_greedy with epsilon set to 0.0 (exploit)
 
 
                 let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
@@ -56,6 +56,7 @@ fn main() {
                     Ok(_) => (),
                     Err(_) => {
                         println!("Invalid move by 'X' on {col}x{row}. Game Over!");
+                        illegal_move = true;
                         break;
                     }
                 }
@@ -81,14 +82,17 @@ fn main() {
                 else {
                     no_loss_streak += 1;
                     println!(" {}/{}", no_loss_streak, no_loss_streak_limit);
-                    
                 }
-                winner == 'X'
             }
             None => {
-                println!("Draw");
-                no_loss_streak += 1;
-                false
+                if illegal_move {
+                    println!("Illegal move. No Loss streak broken at: {}/{}", no_loss_streak, no_loss_streak_limit);
+                    no_loss_streak = 0;
+                }
+                else {
+                    no_loss_streak += 1;
+                    println!("Draw. {}/{}", no_loss_streak, no_loss_streak_limit);
+                }
             }
         };
         

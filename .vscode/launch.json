@@ -10,7 +10,13 @@
             "name": "Debug",
             "program": "${workspaceFolder}/target/debug/rustic",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "cargo": {
+                "args": [
+                    "build"
+                ],
+                "allFeatures": true
+            },
         }
     ]
 }
