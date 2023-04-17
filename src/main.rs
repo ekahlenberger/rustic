@@ -11,9 +11,9 @@ mod activation;
 
 fn main() {
     let trained_network_path = "trained_network.json";
-    let mut network = match load_network(trained_network_path) {
+    let mut network = match load_network(trained_network_path, &[18, 14, 9], &[Activation::Tanh, Activation::Tanh]) {
         Ok(model) => model,
-        Err(_) => NeuralNetwork::new(&[BOARD_SIZE * BOARD_SIZE, 18,BOARD_SIZE * BOARD_SIZE], &[Activation::Tanh, Activation::Tanh]),
+        Err(_) => NeuralNetwork::new(&[18, 14, 9], &[Activation::Tanh, Activation::Tanh]),
     };
 
     let mut no_loss_streak = -1;
