@@ -25,10 +25,6 @@ impl Layer
         for (output_neuron_index, bias) in self.biases.iter().enumerate() {
             let weight_sum = input.iter().enumerate()
                 .map(|(input_neuron_index, input_value)| {
-                    if input_neuron_index >= self.weights.len() || 
-                        output_neuron_index >= self.weights[input_neuron_index].len() {
-                        let _i = input_neuron_index;
-                    }
                     self.weights[input_neuron_index][output_neuron_index] * input_value
                 })
                 .sum::<f32>();
