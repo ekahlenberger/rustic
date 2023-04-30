@@ -11,9 +11,9 @@ mod activation;
 
 fn main() {
     let trained_network_path = "trained_network.json";
-    let mut network = match load_network(trained_network_path, &[18, 14, 9], &[Activation::Tanh, Activation::Tanh]) {
+    let mut network = match load_network(trained_network_path, &[18, 16, 14, 9], &[Activation::LeakyReLU(0.1), Activation::ReLU, Activation::ReLU]) {
         Ok(model) => model,
-        Err(_) => NeuralNetwork::new(&[18, 14, 9], &[Activation::Tanh, Activation::Tanh]),
+        Err(_) => NeuralNetwork::new(&[18, 16, 14, 9], &[Activation::LeakyReLU(0.1), Activation::ReLU, Activation::ReLU]),
     };
 
     let mut no_loss_streak = -1;

@@ -12,11 +12,11 @@ use std::sync::Mutex;
 const DISCOUNT_FACTOR: f32 = 0.9;
 const INITIAL_EPSILON: f32 = 1.0;
 const FINAL_EPSILON: f32 = 0.1;
-const EPSILON_DECAY: f32 = 0.9999;
+const EPSILON_DECAY: f32 = 0.99995;
 const BUFFER_CAPACITY: usize = 10000;
 const BATCH_SIZE: usize = 300;
-const LEARNING_RATE: f32 = 0.001;
-const EPISODES: usize = 50000;
+const LEARNING_RATE: f32 = 0.0001;
+const EPISODES: usize = 100000;
 
 #[derive(Clone, PartialEq, Debug)]
 struct Experience {
@@ -99,113 +99,103 @@ pub fn train(network: NeuralNetwork) -> Result<NeuralNetwork, Box<dyn std::error
     let mut experiences: Vec<Experience> = Vec::new();
     let mut epsilon = INITIAL_EPSILON;
     let result_network = Mutex::new(network);
-    let mut player = 'X';
-    let mut oponent = 'O';
+    
     for _ in 0..EPISODES {
         let mut board = empty_board();
         let mut episode_finished = false;
-        
-        // if thread_rng().gen::<f32>() < 0.5 {
-        //     let _ = play_random_move(&mut board, 'O');
-        // }
-        let mut last_round_experience: Option<Experience> = None;
+        let mut player = 'X';
+        let mut oponent = 'O';
+
+        let mut episode_experiences: Vec<Experience> = Vec::new();
+
         loop {
             let nc = result_network.lock().unwrap().clone();
             let state = board_to_input(&board, player);
-            let action = match player {
-                'X' =>  epsilon_greedy(&nc, &state, epsilon, &board, true),
-                'O' =>  epsilon_greedy(&nc, &state, epsilon, &board, true), // Oponent always plays randomly, but valid only
-                _ => panic!("Invalid player")
-            };
+            let action = epsilon_greedy(&nc, &state, epsilon, &board, false);
             let (row, col) = (action / BOARD_SIZE, action % BOARD_SIZE);
 
             let res = make_move(&mut board, player, row, col);
             let next_state = board_to_input(&board, player);
 
             let reward;
-            if res.is_err() { // can only be X, as O always plays randomly and valid only
-                reward = -2.0;
+            if res.is_err() {
+                reward = -100.0;
                 episode_finished = true;
-            }
-            else if let Some(winner) = check_winner(&board) {
-                reward = if winner == player { 1.0 } else { -1.0 };
+            } else if check_winner(&board).is_some() {
+                reward = 1.0;
                 episode_finished = true;
             } else if is_full(&board) {
                 reward = -0.5;
                 episode_finished = true;
-            }
-            else {
-                reward = 0.0;
+            } else {
+                reward = -0.1;
             }
             
+            episode_experiences.push(Experience {
+                state: state,
+                action,
+                reward,
+                next_state: next_state.clone(),
+                draw: is_full(&board) && check_winner(&board).is_none(),
+            });
+
             if episode_finished {
-                experiences.push(Experience {
-                    state: state,
-                    action,
-                    reward,
-                    next_state,
-                    draw: is_full(&board) && check_winner(&board).is_none(),
-                });
-                // if let Some(exp) = last_round_experience.take() {
-                //     if res.is_ok() { // don't add experience if the move was invalid, as this is not of any value
-                //         experiences.push(exp.with_reward(-reward ));
-                //     }
-                // }
-            }
-            else
-            {
-                last_round_experience = Some(Experience {
-                    state: state,
-                    action,
-                    reward,
-                    next_state,
-                    draw: is_full(&board) && check_winner(&board).is_none(),
-                });
-            }
-            
-
-            // Ensure the buffer does not exceed its capacity
-            if experiences.len() > BUFFER_CAPACITY {
-                experiences.remove(0);
+                break;
             }
 
-            // Ensure the buffer does not exceed its capacity
-            if experiences.len() > BUFFER_CAPACITY {
-                experiences.remove(0);
-            }
+            // Swap players
+            std::mem::swap(&mut player, &mut oponent);
+        }
 
-            // Train the neural network
-            if experiences.len() >= BATCH_SIZE {
-                experiences
-                .choose_multiple(&mut rng, BATCH_SIZE)
-                .collect::<Vec<_>>()
-                .into_par_iter()
-                .for_each(|experience| {
+        // Add all experiences of the current episode to the main experience list
+        experiences.extend(episode_experiences.into_iter());
+
+        // Ensure the buffer does not exceed its capacity
+        while experiences.len() > BUFFER_CAPACITY {
+            experiences.remove(0);
+        }
+
+        // Train the neural network
+        if experiences.len() >= BATCH_SIZE {
+            for experience in experiences.choose_multiple(&mut rng, BATCH_SIZE){
+                    let mut nc = result_network.lock().unwrap();
                     let q_values = nc.forward(&experience.state);
                     let mut target_q_values = q_values.clone();
 
                     let next_q_values = nc.forward(&experience.next_state);
-                    let max_next_q_value = if experience.draw {0.0} // there is no next state and therefore nothing to maximize
-                                                else { next_q_values.iter().fold(f32::NEG_INFINITY, |acc, x| acc.max(*x))};
+                    let max_next_q_value = if experience.draw {0.0}
+                                            else { next_q_values.iter().fold(f32::NEG_INFINITY, |acc, x| acc.max(*x))};
                     let target_q_value = experience.reward + DISCOUNT_FACTOR * max_next_q_value;
+                    // zero target_q_values
+                    // target_q_values.iter_mut().for_each(|x| *x = 0.0);
                     target_q_values[experience.action] = target_q_value;
 
                     // Update the neural network using gradient descent
-                    result_network.lock().unwrap().backpropagate(&experience.state, &target_q_values, LEARNING_RATE);
-                });
-            }                       
-            
-            // Agent plays a random move as 'O'
-            // if check_winner(&board).is_none() {
-            //     let _ = play_random_move(&mut board, 'O');
-            // }
-            
-            // Swap players
-            std::mem::swap(&mut player, &mut oponent);
-            if episode_finished {
-                break;
+                    nc.backpropagate(&experience.state, &target_q_values, LEARNING_RATE);
+
             }
+            // experiences
+            //     .choose_multiple(&mut rng, BATCH_SIZE)
+            //     .collect::<Vec<_>>()
+            //     .into_par_iter()
+            //     .for_each(|experience| {
+            //         let nc = result_network.lock().unwrap().clone();
+            //         let q_values = nc.forward(&experience.state);
+            //         let mut target_q_values = q_values.clone();
+
+            //         let next_q_values = nc.forward(&experience.next_state);
+            //         let max_next_q_value = if experience.draw {0.0}
+            //                                 else { next_q_values.iter().fold(f32::NEG_INFINITY, |acc, x| acc.max(*x))};
+            //         let target_q_value = experience.reward + DISCOUNT_FACTOR * max_next_q_value;
+            //         // zero target_q_values
+            //         // target_q_values.iter_mut().for_each(|x| *x = 0.0);
+            //         target_q_values[experience.action] = target_q_value;
+
+            //         // Update the neural network using gradient descent
+            //         result_network.lock().unwrap().backpropagate(&experience.state, &target_q_values, LEARNING_RATE);
+            //     });
         }
+
         // Decay epsilon after a full game (episode) as decay is optimized for episodes count
         epsilon = epsilon * EPSILON_DECAY;
         epsilon = epsilon.max(FINAL_EPSILON);

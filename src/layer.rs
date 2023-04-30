@@ -66,17 +66,18 @@ impl Layer
                 continue;
             }
             let learn_delta = clipped_delta * learning_rate;
-            for weights in self.weights.iter_mut(){
-                let w = weights[output_node_index];
-                let l1_regularization = Self::L1_REGULARIZATION * w.signum();
-                let l2_regularization = Self::L2_REGULARIZATION * w;
-                
-                weights[output_node_index] += learn_delta - learning_rate * (l1_regularization + l2_regularization);
+            for (input_node_index, input_value) in input.iter().enumerate() {
+                let w = &mut self.weights[input_node_index][output_node_index];
+                // let l1_regularization = Self::L1_REGULARIZATION * w.signum();
+                // let l2_regularization = Self::L2_REGULARIZATION * *w;
+    
+                *w += learning_rate * (clipped_delta * input_value /* - (l1_regularization + l2_regularization)*/);
             }
+
             let bias = self.biases[output_node_index];
-            let l1_regularization = Self::L1_REGULARIZATION * bias.signum();
-            let l2_regularization = Self::L2_REGULARIZATION * bias;
-            self.biases[output_node_index] += learn_delta - learning_rate * (l1_regularization + l2_regularization);
+            // let l1_regularization = Self::L1_REGULARIZATION * bias.signum();
+            // let l2_regularization = Self::L2_REGULARIZATION * bias;
+            self.biases[output_node_index] += learn_delta /* - learning_rate * (l1_regularization + l2_regularization) */;
         }
     }
 }
